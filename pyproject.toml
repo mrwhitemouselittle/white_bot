@@ -1,0 +1,10 @@
+[project]
+name = "white0456-bot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "google-genai>=1.74.0",
+    "python-telegram-bot>=22.7",
+]
