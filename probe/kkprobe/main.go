@@ -512,7 +512,11 @@ func uninstallStartup() error {
 
 func installWindowsStartup(exePath, configPath string) error {
 	command := fmt.Sprintf("%s %s", strconv.Quote(exePath), strconv.Quote(configPath))
-	return runCommand("reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", serviceName, "/t", "REG_SZ", "/d", command, "/f")
+	if err := runCommand("reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", serviceName, "/t", "REG_SZ", "/d", command, "/f"); err != nil {
+		return err
+	}
+
+	return startProbeProcess(exePath, configPath)
 }
 
 func uninstallWindowsStartup() error {
@@ -617,6 +621,16 @@ func runCommand(name string, args ...string) error {
 		logf("command output: %s", strings.TrimSpace(string(output)))
 	}
 	return err
+}
+
+func startProbeProcess(exePath, configPath string) error {
+	logf("starting probe process: %s %s", exePath, configPath)
+	command := exec.Command(exePath, configPath)
+	if err := command.Start(); err != nil {
+		return err
+	}
+	logf("probe process started pid=%d", command.Process.Pid)
+	return nil
 }
 
 func executableDir() (string, error) {

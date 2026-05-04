@@ -335,7 +335,7 @@ Linux/macOS：
 
 各平台使用的自启动方式：
 
-- Windows：写入当前用户的 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`。
+- Windows：写入当前用户的 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`，并在 `install` 成功后立即启动一次探针进程；注册表项会在下次登录时继续自动启动。
 - Linux：写入 `~/.config/systemd/user/kkprobe.service`，并执行 `systemctl --user enable --now kkprobe.service`。
 - macOS：写入 `~/Library/LaunchAgents/com.white0456.kkprobe.plist`，并使用 `launchctl bootstrap` 加载。
 
