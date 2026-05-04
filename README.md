@@ -174,7 +174,8 @@ bot 会返回可直接复制到探针配置里的 JSON 片段，例如：
   "min_interval_seconds": 5,
   "max_interval_seconds": 60,
   "steady_interval_seconds": 30,
-  "request_timeout_seconds": 10
+  "request_timeout_seconds": 10,
+  "log_retention_days": 30
 }
 ```
 
@@ -292,6 +293,7 @@ cp config.example.json config.json
 - `max_interval_seconds`：自适应模式最大发包间隔。
 - `steady_interval_seconds`：关闭自适应模式时的固定发包间隔。
 - `request_timeout_seconds`：单次请求超时。
+- `log_retention_days`：本地日志保留天数，默认 30 天。
 
 运行探针：
 
@@ -311,9 +313,62 @@ Linux/macOS 指定配置文件：
 go run . /path/to/config.json
 ```
 
+### 探针开机自启动
+
+探针支持按当前系统注册用户级开机自启动。
+
+Windows：
+
+```powershell
+.\kkprobe.exe install
+.\kkprobe.exe install C:\path\to\config.json
+.\kkprobe.exe uninstall
+```
+
+Linux/macOS：
+
+```bash
+./kkprobe install
+./kkprobe install /path/to/config.json
+./kkprobe uninstall
+```
+
+各平台使用的自启动方式：
+
+- Windows：写入当前用户的 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`。
+- Linux：写入 `~/.config/systemd/user/kkprobe.service`，并执行 `systemctl --user enable --now kkprobe.service`。
+- macOS：写入 `~/Library/LaunchAgents/com.white0456.kkprobe.plist`，并使用 `launchctl bootstrap` 加载。
+
+Linux 如果希望用户未登录时也运行 user service，需要启用 linger：
+
+```bash
+loginctl enable-linger "$USER"
+```
+
 ### 探针编译
 
 建议把构建产物放在 `probe/kkprobe/bin/`，该目录已被 `.gitignore` 忽略。
+
+一键构建所有平台：
+
+```powershell
+uv run python build_probe.py --clean
+```
+
+Linux/macOS：
+
+```bash
+uv run python build_probe.py --clean
+```
+
+该脚本会构建：
+
+- `kkprobe-windows-amd64.exe`
+- `kkprobe-windows-arm64.exe`
+- `kkprobe-linux-amd64`
+- `kkprobe-linux-arm64`
+- `kkprobe-darwin-amd64`
+- `kkprobe-darwin-arm64`
 
 在当前平台编译：
 
@@ -368,6 +423,12 @@ GOOS=windows GOARCH=amd64 go build -o bin/kkprobe-windows-amd64.exe .
 - 待机间隔增长到 `standby_max_seconds` 后保持固定，避免长期断网时频繁请求。
 - 待机模式下只要任意一次心跳成功，就立即退出待机，清空连续失败计数，恢复正常心跳模式。
 - 待机模式不会修改服务端状态；服务端仍然按最近一次有效心跳的 `timestamp` 判断设备是否在线。
+
+探针本地日志：
+
+- 探针会在可执行文件所在目录下创建 `logs/`。
+- 日志文件按日期命名，例如 `logs/kkprobe-2026-05-04.log`。
+- `log_retention_days` 控制日志保留天数，默认 30 天。
 
 ## 日志
 

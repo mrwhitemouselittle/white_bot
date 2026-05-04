@@ -11,5 +11,6 @@
   "min_interval_seconds": 5,
   "max_interval_seconds": 60,
   "steady_interval_seconds": 30,
-  "request_timeout_seconds": 10
+  "request_timeout_seconds": 10,
+  "log_retention_days": 30
 }

@@ -22,3 +22,4 @@ probe/kkprobe/*.exe
 probe/kkprobe/kkprobe
 probe/kkprobe/kkprobe-*
 probe/kkprobe/bin/
+probe/kkprobe/logs/
