@@ -40,6 +40,8 @@ def setup_logging(level: int = logging.INFO) -> None:
     root_logger.setLevel(level)
     root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     _configured = True
 
 

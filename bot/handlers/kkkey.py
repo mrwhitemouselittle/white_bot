@@ -134,8 +134,8 @@ async def _delete_messages_later(bot_message: Message, sender_message: Message, 
 async def _delete_message(message: Message, label: str) -> None:
     try:
         await message.delete()
-    except Exception:
-        logger.exception("Failed to delete %s.", label)
+    except Exception as exc:
+        logger.warning("Failed to delete %s: %s", label, exc)
 
 
 def _is_owner_private_chat(update: Update) -> bool:
