@@ -7,19 +7,17 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kardianos/service"
 )
 
 const serviceName = "KKProbe"
@@ -62,47 +60,43 @@ type Result struct {
 	Latency time.Duration
 }
 
+type probeProgram struct {
+	cfg  Config
+	done chan struct{}
+}
+
 var logFile *os.File
 
 func main() {
 	command, configPath := parseArgs(os.Args[1:])
 
-	if command == "uninstall" {
-		if err := setupLogger(30); err != nil {
-			fmt.Printf("setup logger failed: %v\n", err)
-		}
-		defer closeLogger()
-
-		if err := uninstallStartup(); err != nil {
-			logf("uninstall failed: %v", err)
+	cfg := Config{}
+	logRetentionDays := 30
+	if commandNeedsConfig(command) {
+		loadedConfig, err := loadConfig(configPath)
+		if err != nil {
+			fmt.Printf("load config failed: %v\n", err)
 			os.Exit(1)
 		}
-		logf("startup uninstalled")
-		return
+		cfg = loadedConfig
+		logRetentionDays = cfg.LogRetentionDays
 	}
 
-	cfg, err := loadConfig(configPath)
-	if err != nil {
-		fmt.Printf("load config failed: %v\n", err)
-		os.Exit(1)
-	}
-	if err := setupLogger(cfg.LogRetentionDays); err != nil {
+	if err := setupLogger(logRetentionDays); err != nil {
 		fmt.Printf("setup logger failed: %v\n", err)
 		os.Exit(1)
 	}
 	defer closeLogger()
 
-	if command == "install" {
-		if err := installStartup(configPath); err != nil {
-			logf("install failed: %v", err)
-			os.Exit(1)
-		}
-		logf("startup installed with config=%s", configPath)
-		return
+	prg := &probeProgram{cfg: cfg}
+	svc, err := newService(prg, configPath)
+	if err != nil {
+		logf("create service failed: %v", err)
+		os.Exit(1)
 	}
 
-	if err := runProbe(cfg); err != nil {
-		logf("probe stopped: %v", err)
+	if err := handleCommand(svc, command, configPath); err != nil {
+		logf("command failed command=%s error=%v", command, err)
 		os.Exit(1)
 	}
 }
@@ -116,7 +110,7 @@ func parseArgs(args []string) (string, string) {
 	}
 
 	switch args[0] {
-	case "run", "install", "uninstall":
+	case "run", "install", "uninstall", "start", "stop", "restart", "status":
 		command = args[0]
 		if len(args) > 1 {
 			configPath = args[1]
@@ -128,7 +122,103 @@ func parseArgs(args []string) (string, string) {
 	return command, configPath
 }
 
-func runProbe(cfg Config) error {
+func commandNeedsConfig(command string) bool {
+	return command == "run" || command == "install"
+}
+
+func newService(prg *probeProgram, configPath string) (service.Service, error) {
+	absoluteConfigPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	svcConfig := &service.Config{
+		Name:        serviceName,
+		DisplayName: "KKProbe",
+		Description: "KKProbe heartbeat probe for Telegram online status.",
+		Arguments:   []string{absoluteConfigPath},
+		Option: service.KeyValue{
+			"UserService": true,
+			"RunAtLoad":   true,
+			"KeepAlive":   true,
+			"Restart":     "always",
+		},
+	}
+	return service.New(prg, svcConfig)
+}
+
+func handleCommand(svc service.Service, command string, configPath string) error {
+	switch command {
+	case "run":
+		logf("running probe through service runner platform=%s interactive=%v", svc.Platform(), service.Interactive())
+		return svc.Run()
+	case "install":
+		if err := svc.Install(); err != nil {
+			return err
+		}
+		logf("startup installed with config=%s", configPath)
+		if err := svc.Start(); err != nil {
+			return err
+		}
+		logf("service started")
+		return nil
+	case "uninstall":
+		if err := svc.Stop(); err != nil {
+			logf("stop before uninstall ignored: %v", err)
+		}
+		if err := svc.Uninstall(); err != nil {
+			return err
+		}
+		logf("service uninstalled")
+		return nil
+	case "start":
+		if err := svc.Start(); err != nil {
+			return err
+		}
+		logf("service started")
+		return nil
+	case "stop":
+		if err := svc.Stop(); err != nil {
+			return err
+		}
+		logf("service stopped")
+		return nil
+	case "restart":
+		if err := svc.Restart(); err != nil {
+			return err
+		}
+		logf("service restarted")
+		return nil
+	case "status":
+		status, err := svc.Status()
+		if err != nil {
+			return err
+		}
+		logf("service status=%s", formatServiceStatus(status))
+		return nil
+	default:
+		return fmt.Errorf("unknown command: %s", command)
+	}
+}
+
+func (p *probeProgram) Start(s service.Service) error {
+	p.done = make(chan struct{})
+	go func() {
+		if err := runProbe(p.cfg, p.done); err != nil {
+			logf("probe stopped: %v", err)
+		}
+	}()
+	return nil
+}
+
+func (p *probeProgram) Stop(s service.Service) error {
+	if p.done != nil {
+		close(p.done)
+	}
+	return nil
+}
+
+func runProbe(cfg Config, done <-chan struct{}) error {
 	secret, err := base64.URLEncoding.DecodeString(cfg.Secret)
 	if err != nil {
 		return fmt.Errorf("decode secret failed: %w", err)
@@ -147,6 +237,13 @@ func runProbe(cfg Config) error {
 	standbyInterval := time.Duration(cfg.StandbyMinSeconds) * time.Second
 
 	for {
+		select {
+		case <-done:
+			logf("stop signal received")
+			return nil
+		default:
+		}
+
 		result := sendHeartbeat(client, cfg, secret)
 
 		if result.OK {
@@ -194,7 +291,10 @@ func runProbe(cfg Config) error {
 			mode,
 			interval,
 		)
-		time.Sleep(interval)
+		if !sleepOrDone(interval, done) {
+			logf("stop signal received")
+			return nil
+		}
 	}
 }
 
@@ -414,6 +514,29 @@ func clampDuration(value, minValue, maxValue time.Duration) time.Duration {
 	return value
 }
 
+func sleepOrDone(duration time.Duration, done <-chan struct{}) bool {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		return true
+	case <-done:
+		return false
+	}
+}
+
+func formatServiceStatus(status service.Status) string {
+	switch status {
+	case service.StatusRunning:
+		return "running"
+	case service.StatusStopped:
+		return "stopped"
+	default:
+		return "unknown"
+	}
+}
+
 func setupLogger(retentionDays int) error {
 	exeDir, err := executableDir()
 	if err != nil {
@@ -471,168 +594,6 @@ func cleanupLogs(logDir string, retentionDays int) {
 	}
 }
 
-func installStartup(configPath string) error {
-	exePath, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	exePath, err = filepath.Abs(exePath)
-	if err != nil {
-		return err
-	}
-	configPath, err = filepath.Abs(configPath)
-	if err != nil {
-		return err
-	}
-
-	switch runtime.GOOS {
-	case "windows":
-		return installWindowsStartup(exePath, configPath)
-	case "linux":
-		return installLinuxStartup(exePath, configPath)
-	case "darwin":
-		return installDarwinStartup(exePath, configPath)
-	default:
-		return fmt.Errorf("unsupported OS: %s", runtime.GOOS)
-	}
-}
-
-func uninstallStartup() error {
-	switch runtime.GOOS {
-	case "windows":
-		return uninstallWindowsStartup()
-	case "linux":
-		return uninstallLinuxStartup()
-	case "darwin":
-		return uninstallDarwinStartup()
-	default:
-		return fmt.Errorf("unsupported OS: %s", runtime.GOOS)
-	}
-}
-
-func installWindowsStartup(exePath, configPath string) error {
-	command := fmt.Sprintf("%s %s", strconv.Quote(exePath), strconv.Quote(configPath))
-	if err := runCommand("reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", serviceName, "/t", "REG_SZ", "/d", command, "/f"); err != nil {
-		return err
-	}
-
-	return startProbeProcess(exePath, configPath)
-}
-
-func uninstallWindowsStartup() error {
-	return runCommand("reg", "delete", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", serviceName, "/f")
-}
-
-func installLinuxStartup(exePath, configPath string) error {
-	serviceDir, err := userConfigPath("systemd", "user")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(serviceDir, 0755); err != nil {
-		return err
-	}
-
-	servicePath := filepath.Join(serviceDir, "kkprobe.service")
-	content := fmt.Sprintf(`[Unit]
-Description=KKProbe heartbeat probe
-After=network-online.target
-
-[Service]
-Type=simple
-ExecStart=%s %s
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=default.target
-`, strconv.Quote(exePath), strconv.Quote(configPath))
-
-	if err := os.WriteFile(servicePath, []byte(content), 0644); err != nil {
-		return err
-	}
-	if err := runCommand("systemctl", "--user", "daemon-reload"); err != nil {
-		return err
-	}
-	return runCommand("systemctl", "--user", "enable", "--now", "kkprobe.service")
-}
-
-func uninstallLinuxStartup() error {
-	_ = runCommand("systemctl", "--user", "disable", "--now", "kkprobe.service")
-	serviceDir, err := userConfigPath("systemd", "user")
-	if err != nil {
-		return err
-	}
-	_ = os.Remove(filepath.Join(serviceDir, "kkprobe.service"))
-	return runCommand("systemctl", "--user", "daemon-reload")
-}
-
-func installDarwinStartup(exePath, configPath string) error {
-	agentDir, err := userHomePath("Library", "LaunchAgents")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(agentDir, 0755); err != nil {
-		return err
-	}
-
-	plistPath := filepath.Join(agentDir, "com.white0456.kkprobe.plist")
-	content := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>com.white0456.kkprobe</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>%s</string>
-    <string>%s</string>
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-</dict>
-</plist>
-`, xmlEscape(exePath), xmlEscape(configPath))
-
-	if err := os.WriteFile(plistPath, []byte(content), 0644); err != nil {
-		return err
-	}
-
-	target := fmt.Sprintf("gui/%d", os.Getuid())
-	_ = runCommand("launchctl", "bootout", target, plistPath)
-	return runCommand("launchctl", "bootstrap", target, plistPath)
-}
-
-func uninstallDarwinStartup() error {
-	plistPath, err := userHomePath("Library", "LaunchAgents", "com.white0456.kkprobe.plist")
-	if err != nil {
-		return err
-	}
-	target := fmt.Sprintf("gui/%d", os.Getuid())
-	_ = runCommand("launchctl", "bootout", target, plistPath)
-	return os.Remove(plistPath)
-}
-
-func runCommand(name string, args ...string) error {
-	logf("running command: %s %s", name, strings.Join(args, " "))
-	output, err := exec.Command(name, args...).CombinedOutput()
-	if len(output) > 0 {
-		logf("command output: %s", strings.TrimSpace(string(output)))
-	}
-	return err
-}
-
-func startProbeProcess(exePath, configPath string) error {
-	logf("starting probe process: %s %s", exePath, configPath)
-	command := exec.Command(exePath, configPath)
-	if err := command.Start(); err != nil {
-		return err
-	}
-	logf("probe process started pid=%d", command.Process.Pid)
-	return nil
-}
-
 func executableDir() (string, error) {
 	exePath, err := os.Executable()
 	if err != nil {
@@ -643,28 +604,4 @@ func executableDir() (string, error) {
 		return "", err
 	}
 	return filepath.Dir(exePath), nil
-}
-
-func userConfigPath(parts ...string) (string, error) {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
-	}
-	items := append([]string{configDir}, parts...)
-	return filepath.Join(items...), nil
-}
-
-func userHomePath(parts ...string) (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	items := append([]string{homeDir}, parts...)
-	return filepath.Join(items...), nil
-}
-
-func xmlEscape(value string) string {
-	var builder strings.Builder
-	_ = xml.EscapeText(&builder, []byte(value))
-	return builder.String()
 }

@@ -333,13 +333,33 @@ Linux/macOS：
 ./kkprobe uninstall
 ```
 
-各平台使用的自启动方式：
+探针使用 `github.com/kardianos/service` 管理多平台服务，`install` 成功后会立即 `start` 服务。
 
-- Windows：写入当前用户的 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`，并在 `install` 成功后立即启动一次探针进程；注册表项会在下次登录时继续自动启动。
-- Linux：写入 `~/.config/systemd/user/kkprobe.service`，并执行 `systemctl --user enable --now kkprobe.service`。
-- macOS：写入 `~/Library/LaunchAgents/com.white0456.kkprobe.plist`，并使用 `launchctl bootstrap` 加载。
+服务控制：
 
-Linux 如果希望用户未登录时也运行 user service，需要启用 linger：
+```powershell
+.\kkprobe.exe start
+.\kkprobe.exe stop
+.\kkprobe.exe restart
+.\kkprobe.exe status
+```
+
+Linux/macOS：
+
+```bash
+./kkprobe start
+./kkprobe stop
+./kkprobe restart
+./kkprobe status
+```
+
+各平台的底层服务方式由 `kardianos/service` 选择：
+
+- Windows：Windows Service。
+- Linux：优先使用 systemd，也兼容该库支持的其他 init 系统。
+- macOS：Launchd。
+
+Linux 如果使用 systemd user service，并希望用户未登录时也运行，需要启用 linger：
 
 ```bash
 loginctl enable-linger "$USER"
