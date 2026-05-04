@@ -14,5 +14,5 @@ async def kkstate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     log_context = telegram_update_context(update)
     logger.info("Command received: /kkstate %s", log_context)
 
-    await update.message.reply_text(format_state_message())
+    await update.message.reply_text(format_state_message(), do_quote=True)
     logger.info("Command completed: /kkstate %s", log_context)

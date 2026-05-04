@@ -55,7 +55,7 @@ def _heartbeat_api_url() -> str:
 
 
 async def _reply_ephemeral(message: Message, text: str, parse_mode: str | None = None) -> None:
-    sent_message = await message.reply_text(text, parse_mode=parse_mode)
+    sent_message = await message.reply_text(text, parse_mode=parse_mode, do_quote=True)
     asyncio.create_task(_delete_message_later(sent_message, DELETE_CONFIG_AFTER_SECONDS))
     asyncio.create_task(_delete_message_later(message, DELETE_CONFIG_AFTER_SECONDS))
 

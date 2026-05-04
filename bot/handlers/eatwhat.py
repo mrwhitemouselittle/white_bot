@@ -14,7 +14,7 @@ async def eatwhat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     log_context = telegram_update_context(update)
     logger.info("Command received: /eatwhat %s", log_context)
 
-    thinking_message = await update.message.reply_text("正在帮你随机挑一道全球美食...")
+    thinking_message = await update.message.reply_text("正在帮你随机挑一道全球美食...", do_quote=True)
 
     try:
         recommendation = await generate_food_recommendation()
