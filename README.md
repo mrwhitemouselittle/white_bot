@@ -9,6 +9,7 @@
 - `/menu`：查看菜单。
 - `/eatwhat`：调用 Gemini 随机推荐一道全球美食和热量。
 - `/kkstate`：查看主人当前是否在线。
+- `/kkapi`：主人私聊中查看探针心跳接口参数。
 - `/kkkey`：主人私聊中管理 KK 探针密钥。
 
 ## 目录结构
@@ -136,6 +137,8 @@ secret: ...
 /kkkey list
 ```
 
+返回内容会使用 Markdown JSON 代码块展示，并在 60 秒后自动删除。
+
 修改或导入密钥：
 
 ```text
@@ -151,6 +154,31 @@ secret: ...
 ```
 
 删除后使用该 `key_id` 的探针心跳会被拒绝。
+
+查看探针心跳接口参数：
+
+```text
+/kkapi
+```
+
+bot 会返回可直接复制到探针配置里的 JSON 片段，例如：
+
+```json
+{
+  "api_url": "http://127.0.0.1:8080/api/kkstate/heartbeat",
+  "adaptive_backoff": true,
+  "standby_after_failures": 5,
+  "standby_min_seconds": 10,
+  "standby_max_seconds": 300,
+  "standby_backoff_factor": 1.8,
+  "min_interval_seconds": 5,
+  "max_interval_seconds": 60,
+  "steady_interval_seconds": 30,
+  "request_timeout_seconds": 10
+}
+```
+
+所有密钥和探针配置相关指令的 bot 返回消息都会在 60 秒后自动删除；如果命令本身包含密钥内容，也会尝试定时删除用户发出的命令消息。
 
 ## 心跳 API
 
