@@ -35,6 +35,7 @@ async def kkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "max_interval_seconds": 60,
         "steady_interval_seconds": 30,
         "request_timeout_seconds": 10,
+        "log_retention_days": 30,
     }
     await _reply_ephemeral(
         update.message,
@@ -56,16 +57,20 @@ def _heartbeat_api_url() -> str:
 
 async def _reply_ephemeral(message: Message, text: str, parse_mode: str | None = None) -> None:
     sent_message = await message.reply_text(text, parse_mode=parse_mode, do_quote=True)
-    asyncio.create_task(_delete_message_later(sent_message, DELETE_CONFIG_AFTER_SECONDS))
-    asyncio.create_task(_delete_message_later(message, DELETE_CONFIG_AFTER_SECONDS))
+    asyncio.create_task(_delete_messages_later(sent_message, message, DELETE_CONFIG_AFTER_SECONDS))
 
 
-async def _delete_message_later(message: Message, delay_seconds: int) -> None:
+async def _delete_messages_later(bot_message: Message, sender_message: Message, delay_seconds: int) -> None:
     await asyncio.sleep(delay_seconds)
+    await _delete_message(bot_message, "bot API config reply")
+    await _delete_message(sender_message, "sender API config command")
+
+
+async def _delete_message(message: Message, label: str) -> None:
     try:
         await message.delete()
     except Exception:
-        logger.exception("Failed to delete API config message.")
+        logger.exception("Failed to delete %s.", label)
 
 
 def _is_owner_private_chat(update: Update) -> bool:

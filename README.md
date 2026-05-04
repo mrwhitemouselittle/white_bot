@@ -460,6 +460,18 @@ bot 使用项目内封装的日志格式，命令行输出带日期：
 
 handler 日志会包含用户、私聊/群聊来源；群消息会额外包含群 ID 和群名。
 
+bot 日志也会写入项目根目录的 `logs/` 文件夹：
+
+```text
+logs/bot-2026-05-04.log
+```
+
+`config.py` 中可以配置保留天数，默认 30 天：
+
+```python
+BOT_LOG_RETENTION_DAYS = 30
+```
+
 ## 安全注意
 
 - 不要提交 `config.py`、`data/`、探针真实配置文件。

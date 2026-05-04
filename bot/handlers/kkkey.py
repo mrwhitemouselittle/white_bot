@@ -122,16 +122,20 @@ async def _set_key(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def _reply_ephemeral(message: Message, text: str, parse_mode: str | None = None) -> None:
     sent_message = await message.reply_text(text, parse_mode=parse_mode, do_quote=True)
-    asyncio.create_task(_delete_message_later(sent_message, DELETE_SECRET_AFTER_SECONDS))
-    asyncio.create_task(_delete_message_later(message, DELETE_SECRET_AFTER_SECONDS))
+    asyncio.create_task(_delete_messages_later(sent_message, message, DELETE_SECRET_AFTER_SECONDS))
 
 
-async def _delete_message_later(message: Message, delay_seconds: int) -> None:
+async def _delete_messages_later(bot_message: Message, sender_message: Message, delay_seconds: int) -> None:
     await asyncio.sleep(delay_seconds)
+    await _delete_message(bot_message, "bot secret reply")
+    await _delete_message(sender_message, "sender secret command")
+
+
+async def _delete_message(message: Message, label: str) -> None:
     try:
         await message.delete()
     except Exception:
-        logger.exception("Failed to delete secret message.")
+        logger.exception("Failed to delete %s.", label)
 
 
 def _is_owner_private_chat(update: Update) -> bool:
