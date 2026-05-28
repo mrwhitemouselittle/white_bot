@@ -25,7 +25,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     _log_command("/help", update)
     await update.message.reply_text(
-        "可用指令：\n/start 启动 Bot\n/menu 打开菜单\n/eatwhat 随机推荐美食\n/kkstate 查看 KK 是否在线\n/kkapi 查看心跳接口参数\n/kkkey 管理探针密钥",
+        "可用指令：\n/start 启动 Bot\n/menu 打开菜单\n/eatwhat 随机推荐美食",
         do_quote=True,
     )
     logger.info("Command completed: /help %s", telegram_update_context(update))
@@ -37,7 +37,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     _log_command("/menu", update)
     await update.message.reply_text(
-        "菜单：\n/eatwhat 随机推荐一道全球美食和热量\n/kkstate 查看 KK 是否在线\n/kkapi 查看心跳接口参数\n/kkkey 管理探针密钥",
+        "菜单：\n/eatwhat 随机推荐一道全球美食和热量",
         do_quote=True,
     )
     logger.info("Command completed: /menu %s", telegram_update_context(update))

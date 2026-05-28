@@ -12,15 +12,5 @@ wheels/
 # Config
 config.py
 
-# Local runtime data
-data/
+# Local logs
 logs/
-
-# Probe local files
-probe/kkprobe/config*.json
-!probe/kkprobe/config.example.json
-probe/kkprobe/*.exe
-probe/kkprobe/kkprobe
-probe/kkprobe/kkprobe-*
-probe/kkprobe/bin/
-probe/kkprobe/logs/
